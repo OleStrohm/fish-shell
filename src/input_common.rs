@@ -524,7 +524,7 @@ enum ReadbResult {
     NothingToRead,
 }
 
-fn readb(in_fd: RawFd, blocking: bool) -> ReadbResult {
+fn readb(in_fd: RawFd, blocking: bool, config_dir: Option<WString>) -> ReadbResult {
     assert!(in_fd >= 0, "Invalid in fd");
     let mut fdset = FdReadableSet::new();
     loop {
@@ -536,7 +536,7 @@ fn readb(in_fd: RawFd, blocking: bool) -> ReadbResult {
         fdset.add(ioport_fd);
 
         // Get the uvar notifier fd (possibly none).
-        let notifier = default_notifier();
+        let notifier = default_notifier(config_dir.clone());
         let notifier_fd = notifier.notification_fd();
         if let Some(notifier_fd) = notifier.notification_fd() {
             fdset.add(notifier_fd);
@@ -831,6 +831,7 @@ pub enum TerminalQuery {
 /// A trait which knows how to produce a stream of input events.
 /// Note this is conceptually a "base class" with override points.
 pub trait InputEventQueuer {
+    fn config_dir(&self) -> Option<WString>;
     /// Return the next event in the queue, or none if the queue is empty.
     fn try_pop(&mut self) -> Option<CharEvent> {
         if self.is_blocked_querying() {
@@ -882,7 +883,7 @@ pub trait InputEventQueuer {
                 return Some(mevt);
             }
 
-            let rr = readb(self.get_in_fd(), blocking);
+            let rr = readb(self.get_in_fd(), blocking, self.config_dir());
             match rr {
                 ReadbResult::Eof => {
                     return Some(CharEvent::Implicit(ImplicitEvent::Eof));
@@ -925,7 +926,7 @@ pub trait InputEventQueuer {
                     let mut i = 0;
                     let ok = loop {
                         if i == buffer.len() {
-                            buffer.push(match readb(self.get_in_fd(), /*blocking=*/ true) {
+                            buffer.push(match readb(self.get_in_fd(), /*blocking=*/ true, self.config_dir()) {
                                 ReadbResult::Byte(b) => b,
                                 _ => 0,
                             });
@@ -1007,7 +1008,7 @@ pub trait InputEventQueuer {
     }
 
     fn try_readb(&mut self, buffer: &mut Vec<u8>) -> Option<u8> {
-        let ReadbResult::Byte(next) = readb(self.get_in_fd(), /*blocking=*/ false) else {
+        let ReadbResult::Byte(next) = readb(self.get_in_fd(), /*blocking=*/ false, self.config_dir()) else {
             return None;
         };
         buffer.push(next);
@@ -1832,18 +1833,24 @@ impl<'a> FloggableDisplay for DisplayBytes<'a> {}
 pub struct InputEventQueue {
     data: InputData,
     blocking_query: RefCell<Option<TerminalQuery>>,
+    config_dir: Option<WString>,
 }
 
 impl InputEventQueue {
-    pub fn new(in_fd: RawFd) -> Self {
+    pub fn new(in_fd: RawFd, config_dir: Option<WString>) -> Self {
         Self {
             data: InputData::new(in_fd),
             blocking_query: RefCell::new(None),
+            config_dir,
         }
     }
 }
 
 impl InputEventQueuer for InputEventQueue {
+    fn config_dir(&self) -> Option<WString> {
+        self.config_dir.clone()
+    }
+
     fn get_input_data(&self) -> &InputData {
         &self.data
     }

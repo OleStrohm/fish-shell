@@ -1,5 +1,6 @@
 use once_cell::sync::OnceCell;
 use std::os::fd::RawFd;
+use crate::wchar::prelude::*;
 
 #[cfg(apple)]
 mod notifyd;
@@ -52,13 +53,13 @@ impl UniversalNotifier for NullNotifier {
 }
 
 /// Create a notifier.
-pub fn create_notifier() -> Box<dyn UniversalNotifier> {
+pub fn create_notifier(config_dir: Option<WString>) -> Box<dyn UniversalNotifier> {
     #[cfg(apple)]
     if let Some(notifier) = notifyd::NotifydNotifier::new() {
         return Box::new(notifier);
     }
     #[cfg(any(target_os = "android", target_os = "linux"))]
-    if let Some(notifier) = inotify::InotifyNotifier::new() {
+    if let Some(notifier) = inotify::InotifyNotifier::new(config_dir) {
         return Box::new(notifier);
     }
     #[cfg(bsd)]
@@ -71,6 +72,6 @@ pub fn create_notifier() -> Box<dyn UniversalNotifier> {
 // Default instance. Other instances are possible for testing.
 static DEFAULT_NOTIFIER: OnceCell<Box<dyn UniversalNotifier>> = OnceCell::new();
 
-pub fn default_notifier() -> &'static dyn UniversalNotifier {
-    DEFAULT_NOTIFIER.get_or_init(create_notifier).as_ref()
+pub fn default_notifier(config_dir: Option<WString>) -> &'static dyn UniversalNotifier {
+    DEFAULT_NOTIFIER.get_or_init(move || create_notifier(config_dir)).as_ref()
 }

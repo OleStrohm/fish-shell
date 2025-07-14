@@ -58,7 +58,7 @@ impl Environment for PwdEnvironment {
 
 /// Helper for test_timezone_env_vars().
 fn return_timezone_hour(tstamp: SystemTime, timezone: &wstr) -> libc::c_int {
-    let vars = EnvStack::globals().create_child(true /* dispatches_var_changes */);
+    let vars = EnvStack::globals(None).create_child(true /* dispatches_var_changes */);
 
     vars.set_one(L!("TZ"), EnvMode::EXPORT, timezone.to_owned());
 
@@ -183,11 +183,11 @@ fn test_env_snapshot() {
 #[test]
 #[should_panic]
 fn test_no_global_push() {
-    EnvStack::globals().push(true);
+    EnvStack::globals(None).push(true);
 }
 
 #[test]
 #[should_panic]
 fn test_no_global_pop() {
-    EnvStack::globals().pop();
+    EnvStack::globals(None).pop();
 }

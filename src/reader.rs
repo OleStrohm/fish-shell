@@ -318,7 +318,7 @@ pub fn reader_push<'a>(parser: &'a Parser, history_name: &wstr, conf: ReaderConf
     let hist = History::with_name(history_name);
     hist.resolve_pending();
     let is_top_level = reader_data_stack().is_empty();
-    let data = ReaderData::new(hist, conf, is_top_level);
+    let data = ReaderData::new(hist, conf, is_top_level, parser.config_dir.clone());
     reader_data_stack().push(data);
     let data = current_data().unwrap();
     data.command_line_changed(EditableLineTag::Commandline, AutosuggestionUpdate::Remove);
@@ -640,6 +640,8 @@ pub struct ReaderData {
     in_flight_autosuggest_request: WString,
 
     rls: Option<ReadlineLoopState>,
+
+    config_dir: Option<WString>,
 }
 
 /// Reader is ReaderData equippeed with a Parser, so it can execute fish script.
@@ -714,7 +716,7 @@ fn read_i(parser: &Parser) {
     }
 
     let mut data = reader_push(parser, &history_session_id(parser.vars()), conf);
-    data.import_history_if_necessary();
+    data.import_history_if_necessary(parser.config_dir.clone());
 
     while !check_exit_loop_maybe_warning(Some(&mut data)) {
         RUN_COUNT.fetch_add(1, Ordering::Relaxed);
@@ -1202,7 +1204,7 @@ fn reader_received_sighup() -> bool {
 }
 
 impl ReaderData {
-    fn new(history: Arc<History>, conf: ReaderConfig, is_top_level: bool) -> Pin<Box<Self>> {
+    fn new(history: Arc<History>, conf: ReaderConfig, is_top_level: bool, config_dir: Option<WString>) -> Pin<Box<Self>> {
         let input_data = InputData::new(conf.inputfd);
         let mut command_line = EditableLine::default();
         if is_top_level {
@@ -1249,6 +1251,7 @@ impl ReaderData {
             in_flight_highlight_request: Default::default(),
             in_flight_autosuggest_request: Default::default(),
             rls: None,
+            config_dir,
         }))
     }
 
@@ -4200,7 +4203,7 @@ impl ReaderData {
 
         if let Some(completion) = self.pager.selected_completion(&self.current_page_rendering) {
             let new_cmd_line = completion_apply_to_command_line(
-                &OperationContext::background_interruptible(EnvStack::globals()), // To-do: include locals.
+                &OperationContext::background_interruptible(EnvStack::globals(self.config_dir.clone())), // To-do: include locals.
                 &completion.completion,
                 completion.flags,
                 &self.cycle_command_line,
@@ -5758,9 +5761,9 @@ fn reader_shell_test(parser: &Parser, bstr: &wstr) -> Result<(), ParserTestError
 
 impl<'a> Reader<'a> {
     // Import history from older location (config path) if our current history is empty.
-    fn import_history_if_necessary(&mut self) {
+    fn import_history_if_necessary(&mut self, config_dir: Option<WString>) {
         if self.history.is_empty() {
-            self.history.populate_from_config_path();
+            self.history.populate_from_config_path(config_dir);
         }
 
         // Import history from bash, etc. if our current history is still empty and is the default

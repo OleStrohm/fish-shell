@@ -499,7 +499,7 @@ fn test_history_path_detection() {
     let filename = L!("testfile");
     std::fs::write(wcs2osstring(&(tmpdir.clone() + filename)), []).unwrap();
 
-    let test_vars = EnvStack::new();
+    let test_vars = EnvStack::new(None);
     test_vars.set_one(L!("PWD"), EnvMode::GLOBAL, tmpdir.clone());
     test_vars.set_one(L!("HOME"), EnvMode::GLOBAL, tmpdir.clone());
 

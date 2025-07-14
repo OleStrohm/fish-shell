@@ -15,7 +15,7 @@ const UVARS_TEST_PATH: &wstr = L!("test/fish_uvars_test/varsfile.txt");
 
 fn test_universal_helper(x: usize) {
     let _cleanup = test_init();
-    let mut uvars = EnvUniversal::new();
+    let mut uvars = EnvUniversal::new(None);
     uvars.initialize_at_path(UVARS_TEST_PATH.to_owned());
 
     for j in 0..UVARS_PER_THREAD {
@@ -52,7 +52,7 @@ fn test_universal() {
     }
     iothread_drain_all(&mut reader);
 
-    let mut uvars = EnvUniversal::new();
+    let mut uvars = EnvUniversal::new(None);
     uvars.initialize_at_path(UVARS_TEST_PATH.to_owned());
 
     for i in 0..threads {
@@ -217,8 +217,8 @@ fn test_universal_parsing_legacy() {
 fn test_universal_callbacks() {
     let _cleanup = test_init();
     std::fs::create_dir_all("test/fish_uvars_test/").unwrap();
-    let mut uvars1 = EnvUniversal::new();
-    let mut uvars2 = EnvUniversal::new();
+    let mut uvars1 = EnvUniversal::new(None);
+    let mut uvars2 = EnvUniversal::new(None);
     let mut callbacks = uvars1
         .initialize_at_path(UVARS_TEST_PATH.to_owned())
         .unwrap_or_default();
@@ -320,7 +320,7 @@ fn test_universal_ok_to_save() {
         "UVARS_TEST_PATH should be readable"
     );
 
-    let mut uvars = EnvUniversal::new();
+    let mut uvars = EnvUniversal::new(None);
     uvars
         .initialize_at_path(UVARS_TEST_PATH.to_owned())
         .unwrap_or_default();

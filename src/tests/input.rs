@@ -20,11 +20,15 @@ impl InputEventQueuer for TestInputEventQueuer {
     fn blocking_query(&self) -> RefMut<'_, Option<TerminalQuery>> {
         self.blocking_query.borrow_mut()
     }
+
+    fn config_dir(&self) -> Option<WString> {
+        None
+    }
 }
 
 #[test]
 fn test_input() {
-    let vars = EnvStack::new();
+    let vars = EnvStack::new(None);
     let mut input = TestInputEventQueuer {
         input_data: InputData::new(i32::MAX), // value doesn't matter since we don't read from it
         blocking_query: RefCell::new(None),

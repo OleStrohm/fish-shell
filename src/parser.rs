@@ -443,11 +443,14 @@ pub struct Parser {
     pub global_event_blocks: AtomicU64,
 
     pub blocking_query: OnceCell<RefCell<Option<TerminalQuery>>>,
+
+    /// Config directory
+    pub config_dir: Option<WString>,
 }
 
 impl Parser {
     /// Create a parser.
-    pub fn new(variables: EnvStack, cancel_behavior: CancelBehavior) -> Parser {
+    pub fn new(variables: EnvStack, cancel_behavior: CancelBehavior, config_dir: Option<WString>) -> Parser {
         let result = Self {
             line_counter: ScopedRefCell::new(LineCounter::empty()),
             job_list: RefCell::default(),
@@ -461,6 +464,7 @@ impl Parser {
             profile_items: RefCell::default(),
             global_event_blocks: AtomicU64::new(0),
             blocking_query: OnceCell::new(),
+            config_dir,
         };
 
         match open_dir(CStr::from_bytes_with_nul(b".\0").unwrap(), BEST_O_SEARCH) {

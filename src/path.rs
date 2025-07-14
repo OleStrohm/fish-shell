@@ -21,14 +21,6 @@ use std::os::unix::prelude::*;
 ///
 /// \param path The directory as an out param
 /// Return whether the directory was returned successfully
-pub fn path_get_config() -> Option<WString> {
-    let dir = get_config_directory();
-    if dir.success() {
-        Some(dir.path.to_owned())
-    } else {
-        None
-    }
-}
 
 /// Returns the user data directory for fish. If the directory or one of its parents doesn't exist,
 /// they are first created.
@@ -103,21 +95,21 @@ pub fn path_emit_config_directory_messages(vars: &EnvStack) {
         FLOG!(path, "data path appears to be on a network volume");
     }
 
-    let config = get_config_directory();
-    if !config.success() {
-        maybe_issue_path_warning(
-            L!("config"),
-            wgettext!("can not save universal variables or functions"),
-            config.used_xdg,
-            L!("XDG_CONFIG_HOME"),
-            &config.path,
-            config.err,
-            vars,
-        );
-    }
-    if config.remoteness == DirRemoteness::remote {
-        FLOG!(path, "config path appears to be on a network volume");
-    }
+    //let config = get_config_directory();
+    //if !config.success() {
+    //    maybe_issue_path_warning(
+    //        L!("config"),
+    //        wgettext!("can not save universal variables or functions"),
+    //        config.used_xdg,
+    //        L!("XDG_CONFIG_HOME"),
+    //        &config.path,
+    //        config.err,
+    //        vars,
+    //    );
+    //}
+    //if config.remoteness == DirRemoteness::remote {
+    //    FLOG!(path, "config path appears to be on a network volume");
+    //}
 }
 
 /// We separate this from path_create() for two reasons. First it's only caused if there is a
@@ -618,7 +610,7 @@ fn make_base_directory(xdg_var: &wstr, non_xdg_homepath: &wstr) -> BaseDirectory
     // The vars we fetch must be exported. Allowing them to be universal doesn't make sense and
     // allowing that creates a lock inversion that deadlocks the shell since we're called before
     // uvars are available.
-    let vars = EnvStack::globals();
+    let vars = EnvStack::globals(None);
 
     let mut path = WString::new();
     let used_xdg;

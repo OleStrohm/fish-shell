@@ -903,13 +903,13 @@ fn throwing_main() -> i32 {
         let s = CString::new("").unwrap();
         unsafe { libc::setlocale(LC_ALL, s.as_ptr()) };
     }
-    env_init(None, true, false);
+    env_init(None, None, true, false);
     let args: Vec<WString> = std::env::args_os()
         .map(|osstr| str2wcstring(osstr.as_bytes()))
         .collect();
 
     // Only set these here so you can't set them via the builtin.
-    if let Some(features_var) = EnvStack::globals().get(L!("fish_features")) {
+    if let Some(features_var) = EnvStack::globals(None).get(L!("fish_features")) {
         for s in features_var.as_list() {
             future_feature_flags::set_from_string(s.as_utfstr());
         }
@@ -1117,7 +1117,7 @@ fn do_indent(streams: &mut IoStreams, args: Vec<WString>) -> BuiltinResult {
                 }
             }
             OutputType::Ansi => {
-                colored_output = colorize(&output_wtext, &colors, EnvStack::globals());
+                colored_output = colorize(&output_wtext, &colors, EnvStack::globals(None));
             }
             OutputType::Html => {
                 colored_output = html_colorize(&output_wtext, &colors);

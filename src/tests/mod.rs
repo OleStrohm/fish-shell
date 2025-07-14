@@ -53,7 +53,7 @@ pub mod prelude {
     impl TestParser {
         pub fn new() -> TestParser {
             TestParser {
-                parser: Parser::new(EnvStack::new(), CancelBehavior::default()),
+                parser: Parser::new(EnvStack::new(None), CancelBehavior::default(), None),
                 pushed_dirs: RefCell::new(Vec::new()),
             }
         }
@@ -103,14 +103,14 @@ pub mod prelude {
             topic_monitor_init();
             crate::threads::init();
             proc_init();
-            env_init(None, true, false);
+            env_init(None, None, true, false);
             misc_init();
 
             // Set default signal handlers, so we can ctrl-C out of this.
             signal_reset_handlers();
 
             // Set PWD from getcwd - fixes #5599
-            EnvStack::globals().set_pwd_from_getcwd();
+            EnvStack::globals(None).set_pwd_from_getcwd();
         });
         reader_init(false);
         ScopeGuard::new((), |()| {

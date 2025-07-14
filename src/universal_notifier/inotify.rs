@@ -17,8 +17,8 @@ pub struct InotifyNotifier {
 
 impl InotifyNotifier {
     /// Create a notifier at the default fish_variables path.
-    pub fn new() -> Option<Self> {
-        Self::new_at(&default_vars_path())
+    pub fn new(config_dir: Option<WString>) -> Option<Self> {
+        Self::new_at(&default_vars_path(config_dir))
     }
 
     /// Create a notifier at a given path.

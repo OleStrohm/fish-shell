@@ -6,7 +6,6 @@ use crate::common::{
 use crate::env::{EnvVar, EnvVarFlags, VarTable};
 use crate::flog::{FLOG, FLOGF};
 use crate::fs::{lock_and_load, rewrite_via_temporary_file, PotentialUpdate};
-use crate::path::path_get_config;
 use crate::wchar::{decode_byte_from_char, prelude::*};
 use crate::wcstringutil::{join_strings, LineIterator};
 use crate::wutil::{file_id_for_file, file_id_for_path_narrow, wrealpath, FileId, INVALID_FILE_ID};
@@ -62,6 +61,9 @@ pub struct EnvUniversal {
     // File id from which we last read.
     // Only update if ok_to_save is updated as well.
     last_read_file_id: FileId,
+
+    // Config directory
+    config_dir: Option<WString>,
 }
 
 struct UniversalReadUpdate {
@@ -73,7 +75,7 @@ struct UniversalReadUpdate {
 
 impl EnvUniversal {
     // Construct an empty universal variables.
-    pub fn new() -> Self {
+    pub fn new(config_dir: Option<WString>) -> Self {
         Self {
             vars_path: Default::default(),
             narrow_vars_path: Default::default(),
@@ -82,6 +84,7 @@ impl EnvUniversal {
             export_generation: 1,
             ok_to_save: true,
             last_read_file_id: INVALID_FILE_ID,
+            config_dir,
         }
     }
     // Get the value of the variable with the specified name.
@@ -142,7 +145,7 @@ impl EnvUniversal {
     /// Initialize this uvars for the default path.
     /// This should be called at most once on any given instance.
     pub fn initialize(&mut self) -> Option<CallbackDataList> {
-        self.initialize_at_path(default_vars_path())
+        self.initialize_at_path(default_vars_path(self.config_dir.clone()))
     }
 
     /// Initialize a this uvars for a given path.
@@ -624,8 +627,8 @@ impl EnvUniversal {
 }
 
 /// Return the default variable path, or an empty string on failure.
-pub fn default_vars_path() -> WString {
-    if let Some(mut path) = default_vars_path_directory() {
+pub fn default_vars_path(config_dir: Option<WString>) -> WString {
+    if let Some(mut path) = config_dir {
         path.push_str("/fish_variables");
         return path;
     }
@@ -655,11 +658,6 @@ mod fish3_uvars {
     pub const SETUVAR: &[u8] = b"SETUVAR";
     pub const EXPORT: &[u8] = b"--export";
     pub const PATH: &[u8] = b"--path";
-}
-
-/// Return the default variable path, or an empty string on failure.
-fn default_vars_path_directory() -> Option<WString> {
-    path_get_config()
 }
 
 /// Test if the message msg contains the command cmd.

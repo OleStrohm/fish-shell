@@ -728,7 +728,7 @@ fn test_1_cancellation(parser: &Parser, src: &wstr) {
 #[serial]
 fn test_cancellation() {
     let _cleanup = test_init();
-    let parser = Parser::new(EnvStack::new(), CancelBehavior::Clear);
+    let parser = Parser::new(EnvStack::new(None), CancelBehavior::Clear, None);
     reader_push(&parser, L!(""), ReaderConfig::default());
     let _pop = ScopeGuard::new((), |()| reader_pop());
 

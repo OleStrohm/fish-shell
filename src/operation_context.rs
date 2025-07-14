@@ -59,14 +59,14 @@ impl<'a> OperationContext<'a> {
     pub fn empty() -> OperationContext<'static> {
         use std::sync::OnceLock;
         static NULL_ENV: OnceLock<EnvStack> = OnceLock::new();
-        let null_env = NULL_ENV.get_or_init(EnvStack::new);
+        let null_env = NULL_ENV.get_or_init(|| EnvStack::new(None));
         OperationContext::background(null_env, EXPANSION_LIMIT_DEFAULT)
     }
 
     // Return an operation context that contains only global variables, no parser, and never
     // cancels.
     pub fn globals() -> OperationContext<'static> {
-        OperationContext::background(EnvStack::globals(), EXPANSION_LIMIT_DEFAULT)
+        OperationContext::background(EnvStack::globals(None), EXPANSION_LIMIT_DEFAULT)
     }
 
     /// Construct from a full set of properties.

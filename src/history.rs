@@ -53,7 +53,7 @@ use crate::{
     operation_context::{OperationContext, EXPANSION_LIMIT_BACKGROUND},
     parse_constants::{ParseTreeFlags, StatementDecoration},
     parse_util::{parse_util_detect_errors, parse_util_unescape_wildcards},
-    path::{path_get_config, path_get_data, path_is_valid},
+    path::{path_get_data, path_is_valid},
     threads::{assert_is_background_thread, iothread_perform},
     util::{find_subslice, get_rng},
     wchar::prelude::*,
@@ -919,12 +919,12 @@ impl HistoryImpl {
     /// This is accomplished by clearing ourselves, and copying the contents of the old history
     /// file to the new history file.
     /// The new contents will automatically be re-mapped later.
-    fn populate_from_config_path(&mut self) {
+    fn populate_from_config_path(&mut self, config_dir: Option<WString>) {
         let Ok(Some(new_file)) = self.history_file_path() else {
             return;
         };
 
-        let Some(mut old_file) = path_get_config() else {
+        let Some(mut old_file) = config_dir else {
             return;
         };
 
@@ -1504,8 +1504,8 @@ impl History {
     }
 
     /// Populates from older location (in config path, rather than data path).
-    pub fn populate_from_config_path(&self) {
-        self.imp().populate_from_config_path()
+    pub fn populate_from_config_path(&self, config_dir: Option<WString>) {
+        self.imp().populate_from_config_path(config_dir)
     }
 
     /// Populates from a bash history file.

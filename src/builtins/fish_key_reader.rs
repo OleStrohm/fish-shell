@@ -81,9 +81,9 @@ fn should_exit(
 }
 
 /// Process the characters we receive as the user presses keys.
-fn process_input(streams: &mut IoStreams, continuous_mode: bool, verbose: bool) -> BuiltinResult {
+fn process_input(streams: &mut IoStreams, continuous_mode: bool, verbose: bool, config_dir: Option<WString>) -> BuiltinResult {
     let mut first_char_seen = false;
-    let mut queue = InputEventQueue::new(STDIN_FILENO);
+    let mut queue = InputEventQueue::new(STDIN_FILENO, config_dir);
     let mut recent_chars = vec![];
     streams.err.appendln("Press a key:\n");
 
@@ -146,6 +146,7 @@ fn setup_and_process_keys(
     streams: &mut IoStreams,
     continuous_mode: bool,
     verbose: bool,
+    config_dir: Option<WString>,
 ) -> BuiltinResult {
     signal_set_handlers(true);
     // We need to set the shell-modes for ICRNL,
@@ -169,7 +170,7 @@ fn setup_and_process_keys(
         streams.err.appendln(L!("\n"));
     }
 
-    process_input(streams, continuous_mode, verbose)
+    process_input(streams, continuous_mode, verbose, config_dir)
 }
 
 fn parse_flags(
@@ -232,7 +233,7 @@ fn parse_flags(
 }
 
 pub fn fish_key_reader(
-    _parser: &Parser,
+    parser: &Parser,
     streams: &mut IoStreams,
     args: &mut [&wstr],
 ) -> BuiltinResult {
@@ -249,7 +250,7 @@ pub fn fish_key_reader(
         return Err(STATUS_CMD_ERROR);
     }
 
-    setup_and_process_keys(streams, continuous_mode, verbose)
+    setup_and_process_keys(streams, continuous_mode, verbose, parser.config_dir.clone())
 }
 
 pub fn main() {
@@ -266,9 +267,9 @@ fn throwing_main() -> i32 {
     set_interactive_session(true);
     topic_monitor_init();
     threads::init();
-    env_init(None, true, false);
+    env_init(None, None, true, false);
     reader_init(false);
-    if let Some(features_var) = EnvStack::globals().get(L!("fish_features")) {
+    if let Some(features_var) = EnvStack::globals(None).get(L!("fish_features")) {
         for s in features_var.as_list() {
             future_feature_flags::set_from_string(s.as_utfstr());
         }
@@ -298,5 +299,5 @@ fn throwing_main() -> i32 {
         return 1;
     }
 
-    setup_and_process_keys(&mut streams, continuous_mode, verbose).builtin_status_code()
+    setup_and_process_keys(&mut streams, continuous_mode, verbose, None).builtin_status_code()
 }

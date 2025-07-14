@@ -16,7 +16,7 @@ use crate::libc::{stdout_stream, C_PATH_BSHELL, _PATH_BSHELL};
 use crate::nix::{geteuid, getpid, isatty};
 use crate::null_terminated_array::OwningNullTerminatedArray;
 use crate::path::{
-    path_emit_config_directory_messages, path_get_cache, path_get_config, path_get_data,
+    path_emit_config_directory_messages, path_get_cache, path_get_data,
     path_make_canonical, paths_are_same_file,
 };
 use crate::proc::is_interactive_session;
@@ -178,10 +178,14 @@ pub struct EnvStack {
 }
 
 impl EnvStack {
+    pub fn config_dir(&self) -> Option<WString> {
+        self.inner.lock().base.config_dir.clone()
+    }
+
     // Creates a new EnvStack which does not dispatch variable changes.
-    pub fn new() -> EnvStack {
+    pub fn new(config_dir: Option<WString>) -> EnvStack {
         EnvStack {
-            inner: EnvStackImpl::new(),
+            inner: EnvStackImpl::new(config_dir),
             can_push_pop: true,
             dispatches_var_changes: false,
         }
@@ -350,9 +354,9 @@ impl EnvStack {
         }
         UVARS_LOCALLY_MODIFIED.store(false);
 
-        let (changed, callbacks) = uvars().sync();
+        let (changed, callbacks) = uvars(self.config_dir()).sync();
         if changed {
-            default_notifier().post_notification();
+            default_notifier(self.config_dir()).post_notification();
         }
         // React internally to changes to special variables like LANG, and populate on-variable events.
         let mut result = Vec::new();
@@ -373,11 +377,11 @@ impl EnvStack {
 
     /// A variable stack that only represents globals.
     /// Do not push or pop from this.
-    pub fn globals() -> &'static EnvStack {
+    pub fn globals(config_dir: Option<WString>) -> &'static EnvStack {
         use std::sync::OnceLock;
         static GLOBALS: OnceLock<EnvStack> = OnceLock::new();
         GLOBALS.get_or_init(|| EnvStack {
-            inner: EnvStackImpl::new(),
+            inner: EnvStackImpl::new(config_dir),
             can_push_pop: false,
             // Do not dispatch variable changes - this is used at startup when we are importing env vars.
             dispatches_var_changes: false,
@@ -568,10 +572,10 @@ fn setup_user(vars: &EnvStack) {
 }
 
 /// Make sure the PATH variable contains something.
-fn setup_path() {
+fn setup_path(config_dir: Option<WString>) {
     use crate::libc::_CS_PATH;
 
-    let vars = EnvStack::globals();
+    let vars = EnvStack::globals(config_dir);
     let path = vars.get_unless_empty(L!("PATH"));
     if path.is_none() {
         // _CS_PATH: colon-separated paths to find POSIX utilities
@@ -597,8 +601,13 @@ fn setup_path() {
 /// This is a simple key->value map and not e.g. cut into paths.
 pub static INHERITED_VARS: OnceCell<HashMap<WString, WString>> = OnceCell::new();
 
-pub fn env_init(paths: Option<&ConfigPaths>, do_uvars: bool, default_paths: bool) {
-    let vars = EnvStack::globals();
+pub fn env_init(
+    paths: Option<&ConfigPaths>,
+    config_dir: Option<WString>,
+    do_uvars: bool,
+    default_paths: bool,
+) {
+    let vars = EnvStack::globals(config_dir.clone());
 
     let env_iter: Vec<_> = std::env::vars_os()
         .map(|(k, v)| (str2wcstring(k.as_bytes()), str2wcstring(v.as_bytes())))
@@ -676,7 +685,10 @@ pub fn env_init(paths: Option<&ConfigPaths>, do_uvars: bool, default_paths: bool
         };
     }
 
-    let user_config_dir = path_get_config();
+    fn path_get_config(user_specified: Option<WString>) -> Option<WString> {
+        user_specified
+    }
+    let user_config_dir = path_get_config(config_dir.clone());
     vars.set_one(
         FISH_CONFIG_DIR,
         EnvMode::GLOBAL,
@@ -697,7 +709,7 @@ pub fn env_init(paths: Option<&ConfigPaths>, do_uvars: bool, default_paths: bool
         user_cache_dir.unwrap_or_default(),
     );
     // Set up a default PATH
-    setup_path();
+    setup_path(config_dir.clone());
 
     // Set up $IFS - this used to be in share/config.fish, but really breaks if it isn't done.
     vars.set_one(L!("IFS"), EnvMode::GLOBAL, "\n \t".into());
@@ -792,7 +804,7 @@ pub fn env_init(paths: Option<&ConfigPaths>, do_uvars: bool, default_paths: bool
         UVAR_SCOPE_IS_GLOBAL.store(true);
     } else {
         // Set up universal variables using the default path.
-        let callbacks = uvars().initialize().unwrap_or_default();
+        let callbacks = uvars(config_dir.clone()).initialize().unwrap_or_default();
         for callback in callbacks {
             env_dispatch_var_change(&callback.key, vars);
         }
@@ -801,14 +813,15 @@ pub fn env_init(paths: Option<&ConfigPaths>, do_uvars: bool, default_paths: bool
         // an exported universal variable. See issues #5258 and #5348.
         let globals_to_skip = {
             let mut to_skip = vec![];
-            let uvars_locked = uvars();
+            let uvars_locked = uvars(config_dir.clone());
             for (name, uvar) in uvars_locked.get_table() {
                 if !uvar.exports() {
                     continue;
                 }
 
                 // Look for a global exported variable with the same name.
-                let global = EnvStack::globals().getf(name, EnvMode::GLOBAL | EnvMode::EXPORT);
+                let global = EnvStack::globals(config_dir.clone())
+                    .getf(name, EnvMode::GLOBAL | EnvMode::EXPORT);
                 if global.is_some_and(|x| x.as_string() == uvar.as_string()) {
                     to_skip.push(name.to_owned());
                 }
@@ -816,7 +829,7 @@ pub fn env_init(paths: Option<&ConfigPaths>, do_uvars: bool, default_paths: bool
             to_skip
         };
         for name in &globals_to_skip {
-            EnvStack::globals().remove(name, EnvMode::GLOBAL | EnvMode::EXPORT);
+            EnvStack::globals(config_dir.clone()).remove(name, EnvMode::GLOBAL | EnvMode::EXPORT);
         }
 
         // Import any abbreviations from uvars.
@@ -825,7 +838,7 @@ pub fn env_init(paths: Option<&ConfigPaths>, do_uvars: bool, default_paths: bool
         let prefix_len = prefix.char_count();
         let from_universal = true;
         let mut abbrs = abbrs_get_set();
-        let uvars_locked = uvars();
+        let uvars_locked = uvars(config_dir);
         for (name, uvar) in uvars_locked.get_table() {
             if !name.starts_with(prefix) {
                 continue;

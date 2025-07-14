@@ -455,6 +455,10 @@ impl<'a> InputEventQueuer for Reader<'a> {
     fn blocking_query(&self) -> RefMut<'_, Option<TerminalQuery>> {
         Reader::blocking_query(self)
     }
+
+    fn config_dir(&self) -> Option<WString> {
+        self.parser.config_dir.clone()
+    }
 }
 
 /// A struct which allows accumulating input events, or returns them to the queue.

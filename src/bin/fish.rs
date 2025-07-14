@@ -50,7 +50,6 @@ use fish::{
     parse_tree::ParsedSource,
     parse_util::parse_util_detect_errors_in_ast,
     parser::{BlockType, CancelBehavior, Parser},
-    path::path_get_config,
     printf,
     proc::{
         get_login, is_interactive_session, mark_login, mark_no_exec, proc_init,
@@ -104,6 +103,8 @@ struct FishCmdOpts {
     is_interactive_session: bool,
     /// Whether to enable private mode.
     enable_private_mode: bool,
+    // Config Directory
+    config_dir: Option<WString>,
 }
 
 /// Return a timeval converted to milliseconds.
@@ -214,8 +215,8 @@ fn read_init(parser: &Parser, paths: &ConfigPaths) {
     // We need to get the configuration directory before we can source the user configuration file.
     // If path_get_config returns false then we have no configuration directory and no custom config
     // to load.
-    if let Some(config_dir) = path_get_config() {
-        source_config_in_directory(parser, &config_dir);
+    if let Some(config_dir) = &parser.config_dir {
+        source_config_in_directory(parser, config_dir);
     }
 }
 
@@ -252,6 +253,7 @@ fn fish_parse_opt(args: &mut [WString], opts: &mut FishCmdOpts) -> ControlFlow<i
     const RUSAGE_ARG: char = 1 as char;
     const PRINT_DEBUG_CATEGORIES_ARG: char = 2 as char;
     const PROFILE_STARTUP_ARG: char = 3 as char;
+    const CONFIG_DIR_ARG: char = 4 as char;
 
     const SHORT_OPTS: &wstr = L!("+:hPilNnvc:C:p:d:f:D:o:");
     const LONG_OPTS: &[WOption<'static>] = &[
@@ -276,6 +278,7 @@ fn fish_parse_opt(args: &mut [WString], opts: &mut FishCmdOpts) -> ControlFlow<i
         wopt(L!("private"), NoArgument, 'P'),
         wopt(L!("help"), NoArgument, 'h'),
         wopt(L!("version"), NoArgument, 'v'),
+        wopt(L!("config_dir"), RequiredArgument, CONFIG_DIR_ARG),
     ];
 
     let mut shim_args: Vec<&wstr> = args.iter().map(|s| s.as_ref()).collect();
@@ -344,6 +347,9 @@ fn fish_parse_opt(args: &mut [WString], opts: &mut FishCmdOpts) -> ControlFlow<i
             'D' => {
                 // TODO: Option is currently useless.
                 // Either remove it or make it work with FLOG.
+            }
+            CONFIG_DIR_ARG => {
+                opts.config_dir = Some(w.woptarg.unwrap().to_owned());
             }
             '?' => {
                 eprintf!(
@@ -481,7 +487,7 @@ fn throwing_main() -> i32 {
         set_interactive_session(true);
     }
     if opts.enable_private_mode {
-        start_private_mode(EnvStack::globals());
+        start_private_mode(EnvStack::globals(opts.config_dir.clone()));
     }
 
     // Only save (and therefore restore) the fg process group if we are interactive. See issues
@@ -496,6 +502,7 @@ fn throwing_main() -> i32 {
         paths = Some(&*CONFIG_PATHS);
         env_init(
             paths,
+            opts.config_dir.clone(),
             /* do uvars */ !opts.no_config,
             /* default paths */ opts.no_config,
         );
@@ -507,20 +514,20 @@ fn throwing_main() -> i32 {
     // Set features early in case other initialization depends on them.
     // Start with the ones set in the environment, then those set on the command line (so the
     // command line takes precedence).
-    if let Some(features_var) = EnvStack::globals().get(L!("fish_features")) {
+    if let Some(features_var) = EnvStack::globals(opts.config_dir.clone()).get(L!("fish_features")) {
         for s in features_var.as_list() {
             features::set_from_string(s.as_utfstr());
         }
     }
     features::set_from_string(opts.features.as_utfstr());
-    fish::env_dispatch::read_terminfo_database(EnvStack::globals());
+    fish::env_dispatch::read_terminfo_database(EnvStack::globals(opts.config_dir.clone()));
     proc_init();
     fish::env::misc_init();
     reader_init(true);
 
     // Construct the root parser!
-    let env = EnvStack::globals().create_child(true /* dispatches_var_changes */);
-    let parser = &Parser::new(env, CancelBehavior::Clear);
+    let env = EnvStack::globals(opts.config_dir.clone()).create_child(true /* dispatches_var_changes */);
+    let parser = &Parser::new(env, CancelBehavior::Clear, opts.config_dir.clone());
     parser.set_syncs_uvars(!opts.no_config);
 
     if !opts.no_exec && !opts.no_config {

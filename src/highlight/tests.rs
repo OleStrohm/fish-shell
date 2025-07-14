@@ -38,7 +38,7 @@ fn test_is_potential_path() {
     let wd = L!("test/is_potential_path_test/").to_owned();
     let wds = [L!(".").to_owned(), wd];
 
-    let vars = EnvStack::new();
+    let vars = EnvStack::new(None);
     let ctx = OperationContext::background(&vars, EXPANSION_LIMIT_DEFAULT);
 
     let path_require_dir = PathFlags {

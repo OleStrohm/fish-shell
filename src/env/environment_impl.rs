@@ -31,12 +31,12 @@ use std::sync::{atomic::Ordering, Arc, Mutex, MutexGuard};
 
 /// Getter for universal variables.
 /// This is typically initialized in env_init(), and is considered empty before then.
-pub fn uvars() -> MutexGuard<'static, EnvUniversal> {
+pub fn uvars(config_dir: Option<WString>) -> MutexGuard<'static, EnvUniversal> {
     use std::sync::OnceLock;
     /// Universal variables instance.
     static UVARS: OnceLock<Mutex<EnvUniversal>> = OnceLock::new();
     UVARS
-        .get_or_init(|| Mutex::new(EnvUniversal::new()))
+        .get_or_init(|| Mutex::new(EnvUniversal::new(config_dir)))
         .lock()
         .unwrap()
 }
@@ -327,17 +327,20 @@ pub struct EnvScopedImpl {
     // Cached list of export generations corresponding to the above export_array.
     // If this differs from the current export generations then we need to regenerate the array.
     export_array_generations: Vec<ExportGeneration>,
+
+    pub config_dir: Option<WString>,
 }
 
 impl EnvScopedImpl {
     /// Creates a new `EnvScopedImpl` with the specified local and global scopes.
-    fn new(locals: EnvNodeRef, globals: EnvNodeRef) -> Self {
+    fn new(locals: EnvNodeRef, globals: EnvNodeRef, config_dir: Option<WString>) -> Self {
         EnvScopedImpl {
             locals,
             globals,
             perproc_data: PerprocData::default(),
             export_array: None,
             export_array_generations: Vec::new(),
+            config_dir,
         }
     }
 
@@ -455,7 +458,7 @@ impl EnvScopedImpl {
     }
 
     fn try_get_universal(&self, key: &wstr) -> Option<EnvVar> {
-        return uvars().get(key);
+        return uvars(self.config_dir.clone()).get(key);
     }
 
     pub fn getf(&self, key: &wstr, mode: EnvMode) -> Option<EnvVar> {
@@ -524,7 +527,7 @@ impl EnvScopedImpl {
         }
 
         if query.universal {
-            let uni_list = uvars().get_names(query.exports, query.unexports);
+            let uni_list = uvars(self.config_dir.clone()).get_names(query.exports, query.unexports);
             names.extend(uni_list);
         }
         names.into_iter().collect()
@@ -550,6 +553,7 @@ impl EnvScopedImpl {
             perproc_data: self.perproc_data.clone(),
             export_array: None,
             export_array_generations: Vec::new(),
+            config_dir: self.config_dir.clone(),
         })
     }
 }
@@ -563,7 +567,7 @@ impl EnvScopedImpl {
     {
         // Our uvars generation count doesn't come from next_export_generation(), so always supply
         // it even if it's 0.
-        func(uvars().get_export_generation());
+        func(uvars(self.config_dir.clone()).get_export_generation());
         if self.globals.borrow().exports() {
             func(self.globals.borrow().export_gen);
         }
@@ -624,7 +628,7 @@ impl EnvScopedImpl {
         Self::get_exported(&self.globals, &mut vals);
         Self::get_exported(&self.locals, &mut vals);
 
-        for (key, var) in uvars().get_table() {
+        for (key, var) in uvars(self.config_dir.clone()).get_table() {
             if var.exports() {
                 // Only insert if not already present, as uvars have lowest precedence.
                 // TODO: a longstanding bug is that an unexported local variable will not mask an exported uvar.
@@ -710,10 +714,10 @@ pub struct EnvStackImpl {
 
 impl EnvStackImpl {
     /// Return a new impl representing global variables, with a single local scope.
-    pub fn new() -> EnvMutex<EnvStackImpl> {
+    pub fn new(config_dir: Option<WString>) -> EnvMutex<EnvStackImpl> {
         let globals = GLOBAL_NODE.clone();
         let locals = EnvNodeRef::new(false, None);
-        let base = EnvScopedImpl::new(locals, globals);
+        let base = EnvScopedImpl::new(locals, globals, config_dir);
         EnvMutex::new(EnvStackImpl {
             base,
             shadowed_locals: Vec::new(),
@@ -788,7 +792,7 @@ impl EnvStackImpl {
             // Existing global variable.
             Self::set_in_node(&mut node, key, val, flags);
             result.global_modified = true;
-        } else if !UVAR_SCOPE_IS_GLOBAL.load() && uvars().get(key).is_some() {
+        } else if !UVAR_SCOPE_IS_GLOBAL.load() && uvars(self.base.config_dir.clone()).get(key).is_some() {
             // Existing universal variable.
             self.set_universal(key, val, query);
             result.uvar_modified = true;
@@ -822,7 +826,7 @@ impl EnvStackImpl {
         if query.has_scope {
             // The user requested erasing from a particular scope.
             if query.universal {
-                if uvars().remove(key) {
+                if uvars(self.base.config_dir.clone()).remove(key) {
                     result.status = EnvStackSetResult::Ok;
                 } else {
                     result.status = EnvStackSetResult::NotFound;
@@ -850,7 +854,7 @@ impl EnvStackImpl {
             // pass
         } else if Self::remove_from_chain(&mut self.base.globals, key) {
             result.global_modified = true;
-        } else if uvars().remove(key) {
+        } else if uvars(self.base.config_dir.clone()).remove(key) {
             result.uvar_modified = true;
         } else {
             result.status = EnvStackSetResult::NotFound;
@@ -991,7 +995,7 @@ impl EnvStackImpl {
 
     /// Set a universal variable, inheriting as applicable from the given old variable.
     fn set_universal(&mut self, key: &wstr, mut val: Vec<WString>, query: Query) {
-        let mut locked_uvars = uvars();
+        let mut locked_uvars = uvars(self.base.config_dir.clone());
         let oldvar = locked_uvars.get(key);
         let oldvar = oldvar.as_ref();
 
