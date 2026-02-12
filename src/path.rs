@@ -554,7 +554,11 @@ impl BaseDirectory {
 /// set, use that directory; otherwise use the path `non_xdg_homepath` rooted in $HOME. Return the
 /// result; see the base_directory_t fields.
 #[cfg_attr(test, allow(unused_variables), allow(unreachable_code))]
-fn make_base_directory(xdg_var: &wstr, non_xdg_homepath: &wstr) -> BaseDirectory {
+fn make_base_directory(
+    xdg_var: &wstr,
+    non_xdg_homepath: &wstr,
+    override_var: Option<&wstr>,
+) -> BaseDirectory {
     #[cfg(test)]
     // If running under `cargo test`, contain ourselves to the build directory and do not try to use
     // the actual $HOME or $XDG_XXX directories. This prevents the tests from failing and/or stops
@@ -583,7 +587,13 @@ fn make_base_directory(xdg_var: &wstr, non_xdg_homepath: &wstr) -> BaseDirectory
 
     let mut path = WString::new();
     let used_xdg;
-    if let Some(xdg_dir) = vars.getf_unless_empty(xdg_var, EnvMode::GLOBAL | EnvMode::EXPORT) {
+    if let Some(override_var) =
+        override_var.and_then(|v| vars.getf_unless_empty(v, EnvMode::GLOBAL | EnvMode::EXPORT))
+    {
+        path = override_var.as_string();
+        used_xdg = false;
+    } else if let Some(xdg_dir) = vars.getf_unless_empty(xdg_var, EnvMode::GLOBAL | EnvMode::EXPORT)
+    {
         path = xdg_dir.as_string() + L!("/fish");
         used_xdg = true;
     } else {
@@ -706,13 +716,18 @@ pub fn path_remoteness(path: &wstr) -> DirRemoteness {
 }
 
 static DATA_DIRECTORY: LazyLock<BaseDirectory> =
-    LazyLock::new(|| make_base_directory(L!("XDG_DATA_HOME"), L!("/.local/share/fish")));
+    LazyLock::new(|| make_base_directory(L!("XDG_DATA_HOME"), L!("/.local/share/fish"), None));
 
 static CACHE_DIRECTORY: LazyLock<BaseDirectory> =
-    LazyLock::new(|| make_base_directory(L!("XDG_CACHE_HOME"), L!("/.cache/fish")));
+    LazyLock::new(|| make_base_directory(L!("XDG_CACHE_HOME"), L!("/.cache/fish"), None));
 
-static CONFIG_DIRECTORY: LazyLock<BaseDirectory> =
-    LazyLock::new(|| make_base_directory(L!("XDG_CONFIG_HOME"), L!("/.config/fish")));
+static CONFIG_DIRECTORY: LazyLock<BaseDirectory> = LazyLock::new(|| {
+    make_base_directory(
+        L!("XDG_CONFIG_HOME"),
+        L!("/.config/fish"),
+        Some(L!("FISH_CONFIG_DIR")),
+    )
+});
 
 /// Appends a path component, with a / if necessary.
 pub fn append_path_component(path: &mut WString, component: &wstr) {
